@@ -21,6 +21,11 @@ const severityColors = {
   High: { bg: '#fee2e2', color: '#991b1b' },
 };
 
+const getDaysOpen = (createdAt) => {
+  const diff = Date.now() - new Date(createdAt).getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+};
+
 export default function SecretariatDashboard() {
   const { user, logout } = useAuth();
   const [cases, setCases] = useState([]);
@@ -32,6 +37,7 @@ export default function SecretariatDashboard() {
   });
   const [hubLoading, setHubLoading] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -79,7 +85,30 @@ export default function SecretariatDashboard() {
     router.push('/login');
   };
 
-  const filteredCases = filter === 'all' ? cases : cases.filter(c => c.status === filter);
+  const exportCSV = () => {
+    const headers = ['Tracking ID', 'Category', 'Department', 'Severity', 'Status', 'Days Open', 'Date'];
+    const rows = filteredCases.map(c => [
+      c.trackingId, c.category, c.department, c.severity, c.status,
+      getDaysOpen(c.createdAt), new Date(c.createdAt).toLocaleDateString('en-GB')
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `neoconnect-cases-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredCases = cases.filter(c => {
+    const matchesFilter = filter === 'all' || c.status === filter;
+    const matchesSearch = !search ||
+      c.trackingId?.toLowerCase().includes(search.toLowerCase()) ||
+      c.department?.toLowerCase().includes(search.toLowerCase()) ||
+      c.category?.toLowerCase().includes(search.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
   const stats = {
     total: cases.length,
@@ -162,16 +191,29 @@ export default function SecretariatDashboard() {
 
         {activeTab === 'cases' && (
           <div className="animate-in">
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ flex: 1, minWidth: '280px' }}>
+            {/* Search + Manager ID + Filters row */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
                 <input
                   className="neo-input"
-                  placeholder="Paste Case Manager ID here to assign cases"
+                  placeholder="Search by tracking ID, department, category..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <input
+                  className="neo-input"
+                  placeholder="Paste Case Manager ID to assign cases"
                   value={managerId}
                   onChange={(e) => setManagerId(e.target.value)}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+            </div>
+
+            {/* Filter buttons + CSV export */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flex: 1, flexWrap: 'wrap' }}>
                 {['all', 'New', 'Assigned', 'In Progress', 'Escalated', 'Resolved'].map(f => (
                   <button key={f} onClick={() => setFilter(f)} style={{
                     padding: '0.4rem 0.875rem', borderRadius: '20px',
@@ -185,10 +227,22 @@ export default function SecretariatDashboard() {
                   }}>{f === 'all' ? 'All' : f}</button>
                 ))}
               </div>
+              <button onClick={exportCSV} style={{
+                padding: '0.4rem 0.875rem', borderRadius: '20px',
+                border: '1px solid #c9a84c', cursor: 'pointer',
+                fontSize: '0.75rem', fontWeight: 600,
+                fontFamily: 'DM Sans, sans-serif',
+                background: 'transparent', color: '#c9a84c',
+                transition: 'all 0.15s ease',
+              }}>
+                ⬇ Export CSV
+              </button>
             </div>
 
             {loading ? (
               <div style={{ textAlign: 'center', padding: '3rem', color: '#9896a4' }}>Loading cases...</div>
+            ) : filteredCases.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#9896a4' }}>No cases found</div>
             ) : (
               <div className="neo-card" style={{ overflow: 'hidden' }}>
                 <table className="neo-table">
@@ -199,36 +253,52 @@ export default function SecretariatDashboard() {
                       <th>Department</th>
                       <th>Severity</th>
                       <th>Status</th>
+                      <th>Days Open</th>
                       <th>Date</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredCases.map((c) => (
-                      <tr key={c._id}>
-                        <td style={{ fontWeight: 700, color: '#c9a84c', fontSize: '0.8rem' }}>{c.trackingId}</td>
-                        <td>{c.category}</td>
-                        <td>{c.department}</td>
-                        <td>
-                          <span style={{
-                            padding: '0.2rem 0.6rem', borderRadius: '20px',
-                            fontSize: '0.75rem', fontWeight: 600,
-                            background: severityColors[c.severity]?.bg,
-                            color: severityColors[c.severity]?.color,
-                          }}>{c.severity}</span>
-                        </td>
-                        <td><span className={`neo-badge ${statusConfig[c.status]}`}>{c.status}</span></td>
-                        <td>{new Date(c.createdAt).toLocaleDateString('en-GB')}</td>
-                        <td>
-                          {c.status === 'New' && (
-                            <button className="neo-btn-primary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}
-                              onClick={() => handleAssign(c._id)}>
-                              Assign
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredCases.map((c) => {
+                      const days = getDaysOpen(c.createdAt);
+                      const urgent = days >= 5;
+                      return (
+                        <tr key={c._id}>
+                          <td style={{ fontWeight: 700, color: '#c9a84c', fontSize: '0.8rem' }}>{c.trackingId}</td>
+                          <td>{c.category}</td>
+                          <td>{c.department}</td>
+                          <td>
+                            <span style={{
+                              padding: '0.2rem 0.6rem', borderRadius: '20px',
+                              fontSize: '0.75rem', fontWeight: 600,
+                              background: severityColors[c.severity]?.bg,
+                              color: severityColors[c.severity]?.color,
+                            }}>{c.severity}</span>
+                          </td>
+                          <td><span className={`neo-badge ${statusConfig[c.status]}`}>{c.status}</span></td>
+                          <td>
+                            <span style={{
+                              padding: '0.2rem 0.6rem', borderRadius: '20px',
+                              fontSize: '0.75rem', fontWeight: 700,
+                              background: urgent ? '#fee2e2' : '#f0fdf4',
+                              color: urgent ? '#991b1b' : '#065f46',
+                            }}>
+                              {days}d {urgent ? '⚠️' : ''}
+                            </span>
+                          </td>
+                          <td>{new Date(c.createdAt).toLocaleDateString('en-GB')}</td>
+                          <td>
+                            {c.status === 'New' && (
+                              <button className="neo-btn-primary"
+                                style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}
+                                onClick={() => handleAssign(c._id)}>
+                                Assign
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -252,18 +322,21 @@ export default function SecretariatDashboard() {
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={labelStyle}>Title</label>
-                <input style={inputStyle} value={hubForm.title} onChange={(e) => setHubForm({ ...hubForm, title: e.target.value })} required />
+                <input style={inputStyle} value={hubForm.title}
+                  onChange={(e) => setHubForm({ ...hubForm, title: e.target.value })} required />
               </div>
               {hubForm.type === 'digest' && (
                 <>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={labelStyle}>Quarter (e.g. Q1 2026)</label>
-                    <input style={inputStyle} value={hubForm.quarter} onChange={(e) => setHubForm({ ...hubForm, quarter: e.target.value })} />
+                    <input style={inputStyle} value={hubForm.quarter}
+                      onChange={(e) => setHubForm({ ...hubForm, quarter: e.target.value })} />
                   </div>
                   <div style={{ marginBottom: '1.5rem' }}>
                     <label style={labelStyle}>Summary</label>
                     <textarea style={{ ...inputStyle, minHeight: '120px', resize: 'vertical' }}
-                      value={hubForm.content} onChange={(e) => setHubForm({ ...hubForm, content: e.target.value })} required />
+                      value={hubForm.content}
+                      onChange={(e) => setHubForm({ ...hubForm, content: e.target.value })} required />
                   </div>
                 </>
               )}
@@ -271,15 +344,18 @@ export default function SecretariatDashboard() {
                 <>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={labelStyle}>What Was Raised</label>
-                    <input style={inputStyle} value={hubForm.raised} onChange={(e) => setHubForm({ ...hubForm, raised: e.target.value })} required />
+                    <input style={inputStyle} value={hubForm.raised}
+                      onChange={(e) => setHubForm({ ...hubForm, raised: e.target.value })} required />
                   </div>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={labelStyle}>Action Taken</label>
-                    <input style={inputStyle} value={hubForm.action} onChange={(e) => setHubForm({ ...hubForm, action: e.target.value })} required />
+                    <input style={inputStyle} value={hubForm.action}
+                      onChange={(e) => setHubForm({ ...hubForm, action: e.target.value })} required />
                   </div>
                   <div style={{ marginBottom: '1.5rem' }}>
                     <label style={labelStyle}>What Changed</label>
-                    <input style={inputStyle} value={hubForm.outcome} onChange={(e) => setHubForm({ ...hubForm, outcome: e.target.value })} required />
+                    <input style={inputStyle} value={hubForm.outcome}
+                      onChange={(e) => setHubForm({ ...hubForm, outcome: e.target.value })} required />
                   </div>
                 </>
               )}
@@ -287,7 +363,8 @@ export default function SecretariatDashboard() {
                 <div style={{ marginBottom: '1.5rem' }}>
                   <label style={labelStyle}>Notes</label>
                   <textarea style={{ ...inputStyle, minHeight: '120px', resize: 'vertical' }}
-                    value={hubForm.content} onChange={(e) => setHubForm({ ...hubForm, content: e.target.value })} />
+                    value={hubForm.content}
+                    onChange={(e) => setHubForm({ ...hubForm, content: e.target.value })} />
                 </div>
               )}
               <button type="submit" className="neo-btn-primary" disabled={hubLoading}
