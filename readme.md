@@ -5,6 +5,9 @@
 NeoConnect is a production-grade staff feedback and complaint management platform. Employees can raise issues, vote on polls, and see how management is responding — with full accountability at every step.
 
 ---
+##Links
+**Live Application:** [neoconnect-puce.vercel.app](https://neoconnect-puce.vercel.app)  
+**API Base URL:** [neoconnect-api-ujwa.onrender.com](https://neoconnect-api-ujwa.onrender.com)
 
 ## Features
 
