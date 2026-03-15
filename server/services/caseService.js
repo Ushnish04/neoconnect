@@ -1,7 +1,6 @@
 import Case from '../models/Case.js';
 import User from '../models/User.js';
 import generateTrackingId from '../utils/generateTrackingId.js';
-import { io } from '../server.js';
 
 export const createCase = async (data, userId, isAnonymous) => {
   const trackingId = await generateTrackingId();
@@ -48,37 +47,15 @@ export const assignCase = async (caseId, managerId) => {
     { new: true }
   ).populate('assignedTo', 'name email');
 
-  if (updated?.assignedTo?._id) {
-    io.to(updated.assignedTo._id.toString()).emit('notification', {
-      type: 'assigned',
-      message: `You have been assigned case ${updated.trackingId}`,
-      caseId: updated._id,
-      trackingId: updated.trackingId,
-      createdAt: new Date(),
-    });
-  }
-
   return updated;
 };
 
 export const updateCaseStatus = async (caseId, status, userId) => {
-  const updated = await Case.findByIdAndUpdate(
+  return await Case.findByIdAndUpdate(
     caseId,
     { status, lastResponseAt: Date.now() },
     { new: true }
-  ).populate('submittedBy', 'name department');
-
-  if (updated?.submittedBy?._id) {
-    io.to(updated.submittedBy._id.toString()).emit('notification', {
-      type: 'status_update',
-      message: `Your case ${updated.trackingId} is now ${status}`,
-      caseId: updated._id,
-      trackingId: updated.trackingId,
-      createdAt: new Date(),
-    });
-  }
-
-  return updated;
+  );
 };
 
 export const addNote = async (caseId, text, userId) => {
@@ -86,26 +63,6 @@ export const addNote = async (caseId, text, userId) => {
   caseDoc.notes.push({ text, addedBy: userId });
   caseDoc.lastResponseAt = Date.now();
   return await caseDoc.save();
-};
-
-export const escalateCase = async (caseId) => {
-  const updated = await Case.findByIdAndUpdate(
-    caseId,
-    { status: 'Escalated' },
-    { new: true }
-  ).populate('assignedTo', 'name email');
-
-  if (updated?.assignedTo?._id) {
-    io.to(updated.assignedTo._id.toString()).emit('notification', {
-      type: 'escalated',
-      message: `Case ${updated.trackingId} has been escalated — no response in 7 days`,
-      caseId: updated._id,
-      trackingId: updated.trackingId,
-      createdAt: new Date(),
-    });
-  }
-
-  return updated;
 };
 
 export const getMyCases = async (userId, page = 1, limit = 20) => {
