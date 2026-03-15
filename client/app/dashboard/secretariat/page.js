@@ -61,8 +61,8 @@ export default function SecretariatDashboard() {
       toast.success('Case assigned successfully');
       const res = await casesAPI.getAll(1, 50);
       setCases(res.data.cases);
-    } catch {
-      toast.error('Failed to assign case');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to assign case');
     }
   };
 
