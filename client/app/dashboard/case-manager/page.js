@@ -20,6 +20,11 @@ const severityColors = {
   High: { bg: '#fee2e2', color: '#991b1b' },
 };
 
+const getDaysOpen = (createdAt) => {
+  const diff = Date.now() - new Date(createdAt).getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+};
+
 export default function CaseManagerDashboard() {
   const { user, logout } = useAuth();
   const [cases, setCases] = useState([]);
@@ -29,6 +34,8 @@ export default function CaseManagerDashboard() {
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [activeCase, setActiveCase] = useState(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
   const router = useRouter();
 
   useEffect(() => {
@@ -50,7 +57,8 @@ export default function CaseManagerDashboard() {
     try {
       await casesAPI.updateStatus(caseId, status);
       toast.success('Status updated');
-      fetchCases();
+      setCases(cases.map(c => c._id === caseId ? { ...c, status } : c));
+      setActiveCase(prev => prev?._id === caseId ? { ...prev, status } : prev);
     } catch {
       toast.error('Failed to update status');
     }
@@ -59,10 +67,12 @@ export default function CaseManagerDashboard() {
   const handleAddNote = async (caseId) => {
     if (!noteText) return toast.error('Enter a note');
     try {
-      await casesAPI.addNote(caseId, noteText);
+      const res = await casesAPI.addNote(caseId, noteText);
       toast.success('Note added');
       setNoteText('');
-      fetchCases();
+      const updatedNotes = res.data.case.notes;
+      setCases(cases.map(c => c._id === caseId ? { ...c, notes: updatedNotes } : c));
+      setActiveCase(prev => prev?._id === caseId ? { ...prev, notes: updatedNotes } : prev);
     } catch {
       toast.error('Failed to add note');
     }
@@ -87,6 +97,15 @@ export default function CaseManagerDashboard() {
     await logout();
     router.push('/login');
   };
+
+  const filteredCases = cases.filter(c => {
+    const matchesFilter = filter === 'all' || c.status === filter;
+    const matchesSearch = !search ||
+      c.trackingId?.toLowerCase().includes(search.toLowerCase()) ||
+      c.department?.toLowerCase().includes(search.toLowerCase()) ||
+      c.category?.toLowerCase().includes(search.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
   const stats = {
     total: cases.length,
@@ -132,52 +151,99 @@ export default function CaseManagerDashboard() {
           ))}
         </div>
 
+        {/* Search + Filter */}
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            className="neo-input"
+            placeholder="Search by tracking ID, category, department..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ marginBottom: '0.75rem' }}
+          />
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {['all', 'Assigned', 'In Progress', 'Pending', 'Resolved', 'Escalated'].map(f => (
+              <button key={f} onClick={() => setFilter(f)} style={{
+                padding: '0.4rem 0.875rem', borderRadius: '20px',
+                border: '1px solid', cursor: 'pointer',
+                fontSize: '0.75rem', fontWeight: 600,
+                fontFamily: 'DM Sans, sans-serif',
+                background: filter === f ? '#0a1628' : 'transparent',
+                color: filter === f ? '#c9a84c' : '#9896a4',
+                borderColor: filter === f ? '#0a1628' : '#e2e1e4',
+                transition: 'all 0.15s ease',
+              }}>{f === 'all' ? 'All' : f}</button>
+            ))}
+          </div>
+        </div>
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#9896a4' }}>Loading cases...</div>
-        ) : cases.length === 0 ? (
+        ) : filteredCases.length === 0 ? (
           <div className="neo-card" style={{ padding: '3rem', textAlign: 'center' }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
-            <h3 style={{ fontFamily: 'Playfair Display, serif' }}>No cases assigned yet</h3>
-            <p style={{ color: '#9896a4', marginTop: '0.5rem' }}>Cases assigned to you will appear here</p>
+            <h3 style={{ fontFamily: 'Playfair Display, serif' }}>No cases found</h3>
+            <p style={{ color: '#9896a4', marginTop: '0.5rem' }}>
+              {cases.length === 0 ? 'Cases assigned to you will appear here' : 'Try a different search or filter'}
+            </p>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: activeCase ? '1fr 1fr' : '1fr', gap: '1.5rem' }}>
             <div style={{ display: 'grid', gap: '1rem' }}>
-              {cases.map((c, i) => (
-                <div key={c._id} className="neo-card animate-in" style={{
-                  padding: '1.5rem',
-                  animationDelay: `${i * 0.05}s`, opacity: 0,
-                  border: activeCase?._id === c._id ? '2px solid #c9a84c' : '1px solid #e2e1e4',
-                  cursor: 'pointer',
-                }} onClick={() => setActiveCase(activeCase?._id === c._id ? null : c)}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#c9a84c', letterSpacing: '0.05em' }}>
-                        {c.trackingId}
-                      </span>
-                      <span className={`neo-badge ${statusConfig[c.status]}`}>{c.status}</span>
+              {filteredCases.map((c, i) => {
+                const days = getDaysOpen(c.createdAt);
+                const urgent = days >= 5;
+                return (
+                  <div key={c._id} className="neo-card animate-in" style={{
+                    padding: '1.5rem',
+                    animationDelay: `${i * 0.05}s`, opacity: 0,
+                    border: activeCase?._id === c._id ? '2px solid #c9a84c' : '1px solid #e2e1e4',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }} onClick={() => setActiveCase(activeCase?._id === c._id ? null : c)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#c9a84c', letterSpacing: '0.05em' }}>
+                          {c.trackingId}
+                        </span>
+                        <span className={`neo-badge ${statusConfig[c.status]}`}>{c.status}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{
+                          padding: '0.2rem 0.6rem', borderRadius: '20px',
+                          fontSize: '0.75rem', fontWeight: 700,
+                          background: urgent ? '#fee2e2' : '#f0fdf4',
+                          color: urgent ? '#991b1b' : '#065f46',
+                        }}>
+                          {days}d {urgent ? '⚠️' : ''}
+                        </span>
+                        <span style={{
+                          padding: '0.2rem 0.6rem', borderRadius: '20px',
+                          fontSize: '0.75rem', fontWeight: 600,
+                          background: severityColors[c.severity]?.bg,
+                          color: severityColors[c.severity]?.color,
+                        }}>{c.severity}</span>
+                      </div>
                     </div>
-                    <span style={{
-                      padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600,
-                      background: severityColors[c.severity]?.bg, color: severityColors[c.severity]?.color,
-                    }}>{c.severity}</span>
+                    <p style={{ color: '#0a1628', fontSize: '0.9rem', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                      {c.description?.slice(0, 100)}{c.description?.length > 100 ? '...' : ''}
+                    </p>
+                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: '#9896a4' }}>
+                      <span>📁 {c.category}</span>
+                      <span>🏢 {c.department}</span>
+                      <span style={{ marginLeft: 'auto' }}>
+                        {new Date(c.createdAt).toLocaleDateString('en-GB')}
+                      </span>
+                    </div>
                   </div>
-                  <p style={{ color: '#0a1628', fontSize: '0.9rem', marginBottom: '0.75rem', lineHeight: 1.5 }}>
-                    {c.description?.slice(0, 100)}{c.description?.length > 100 ? '...' : ''}
-                  </p>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: '#9896a4' }}>
-                    <span>📁 {c.category}</span>
-                    <span>🏢 {c.department}</span>
-                    <span style={{ marginLeft: 'auto' }}>
-                      {new Date(c.createdAt).toLocaleDateString('en-GB')}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {activeCase && (
-              <div className="neo-card animate-in" style={{ padding: '1.5rem', height: 'fit-content', position: 'sticky', top: '80px' }}>
+              <div className="neo-card animate-in" style={{
+                padding: '1.5rem', height: 'fit-content',
+                position: 'sticky', top: '80px'
+              }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.1rem' }}>
                     {activeCase.trackingId}
@@ -186,6 +252,18 @@ export default function CaseManagerDashboard() {
                     background: 'none', border: 'none', cursor: 'pointer',
                     color: '#9896a4', fontSize: '1.25rem',
                   }}>×</button>
+                </div>
+
+                <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{
+                    padding: '0.2rem 0.6rem', borderRadius: '20px',
+                    fontSize: '0.75rem', fontWeight: 600,
+                    background: severityColors[activeCase.severity]?.bg,
+                    color: severityColors[activeCase.severity]?.color,
+                  }}>{activeCase.severity}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#9896a4' }}>📁 {activeCase.category}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#9896a4' }}>🏢 {activeCase.department}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#9896a4' }}>📍 {activeCase.location}</span>
                 </div>
 
                 <p style={{ fontSize: '0.9rem', color: '#5c5a68', marginBottom: '1.5rem', lineHeight: 1.6 }}>
@@ -267,15 +345,21 @@ export default function CaseManagerDashboard() {
                       display: 'block', fontSize: '0.75rem', fontWeight: 600,
                       color: '#5c5a68', textTransform: 'uppercase',
                       letterSpacing: '0.05em', marginBottom: '0.5rem',
-                    }}>Case Notes</label>
+                    }}>Case Timeline</label>
                     <div style={{ display: 'grid', gap: '0.5rem' }}>
                       {activeCase.notes.map((n, i) => (
                         <div key={i} style={{
                           padding: '0.75rem 1rem',
                           background: '#f8f7f4', borderRadius: '8px',
-                          fontSize: '0.85rem', color: '#5c5a68',
                           borderLeft: '3px solid #c9a84c',
-                        }}>{n.text}</div>
+                        }}>
+                          <p style={{ fontSize: '0.85rem', color: '#5c5a68', marginBottom: '0.25rem' }}>
+                            {n.text}
+                          </p>
+                          <p style={{ fontSize: '0.75rem', color: '#9896a4' }}>
+                            {n.createdAt ? new Date(n.createdAt).toLocaleString('en-GB') : ''}
+                          </p>
+                        </div>
                       ))}
                     </div>
                   </div>
