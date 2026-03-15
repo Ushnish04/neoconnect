@@ -63,6 +63,12 @@ export const authAPI = {
   getMe: () => api.get('/auth/me'),
 };
 
+export const adminAPI = {
+  getUsers: () => api.get('/auth/users'),
+  updateRole: (id, role) => api.put(`/auth/users/${id}/role`, { role }),
+  deleteUser: (id) => api.delete(`/auth/users/${id}`),
+};
+
 export const casesAPI = {
   submit: (data) => api.post('/cases/submit', data),
   getAll: (page, limit) => api.get(`/cases?page=${page}&limit=${limit}`),
