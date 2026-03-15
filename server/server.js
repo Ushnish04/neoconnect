@@ -1,5 +1,20 @@
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import connectDB from './config/db.js';
+import authRoutes from './routes/authRoutes.js';
+import caseRoutes from './routes/caseRoutes.js';
+import pollRoutes from './routes/pollRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
+import aiRoutes from './routes/aiRoutes.js';
+import runEscalationJob from './utils/escalationJob.js';
+import hubRoutes from './routes/hubRoutes.js';
+
 dotenv.config();
 connectDB();
+
 
 const app = express();
 
