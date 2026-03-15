@@ -62,3 +62,4 @@ app.use('/api/ai', aiRoutes);
 runEscalationJob();
 
 app.use('/api/hub', hubRoutes);
+app.set('trust proxy', 1)
